@@ -115,41 +115,36 @@ Eigen::Matrix4d ICP(PointCloudT::Ptr target, PointCloudT::Ptr source, Pose start
     Eigen::Matrix4d initTransform = transform3D(startingPose.rotation.yaw, startingPose.rotation.pitch, startingPose.rotation.roll, startingPose.position.x, startingPose.position.y, startingPose.position.z);
     PointCloudT::Ptr transformSource (new PointCloudT); 
     pcl::transformPointCloud (*source, *transformSource, initTransform);
-
-	
-  	// create icp object
-  	// set icp parameters which includes 1) algorithm iteration numbers, 2) max. correspondence distance for associating source and target points
-  	// for list of parameters in PCL icp algorithm, check "http://docs.ros.org/en/hydro/api/pcl/html/classpcl_1_1IterativeClosestPoint.html"
-    pcl::IterativeClosestPoint<PointT, PointT> icp;
-    icp.setMaximumIterations(iterations);
-	icp.setMaxCorrespondenceDistance(2.0);
   
-  	// set source pcl and target pcl
-    icp.setInputSource(transformSource);
-    icp.setInputTarget(target);
+  pcl:: console:: TicToc time;
+  time.tic();
+  // define icp parameters
+  
+  pcl::IterativeClosestPoint <PointT,PointT> icp;
+  
+  icp.setInputSource(transformSource);
+  icp.setInputTarget(target);
+  icp.setMaximumIterations(iterations);
+  icp.setMaxCorrespondenceDistance(2);
+  
+  // align the cloud
+  PointCloudT::Ptr cloud_icp(new PointCloudT);
+  icp.align(*cloud_icp);
+
+  // check convergence
+  if(icp.hasConverged())
+  {
+  transformation_matrix = icp.getFinalTransformation().cast<double>();
+    transformation_matrix = transformation_matrix*initTransform;
     
-//     icp.setTransformationEpsilon(0.001);
-//     icp.setEuclideanFitnessEpsilon(.05);
-    //icp.setRANSACOutlierRejectionThreshold (10);
-
-  	// create cloud_icp to store ICP output point cloud
-    PointCloudT::Ptr cloud_icp (new PointCloudT);
-    icp.align (*cloud_icp);
-    //std::cout << "Applied " << iterations << " ICP iteration(s) in " << time.toc () << " ms" << std::endl;
-
-    if (icp.hasConverged ())
+    return transformation_matrix;
+  }
+	else 
     {
-        //std::cout << "\nICP has converged, score is " << icp.getFitnessScore () << std::endl;
-        transformation_matrix = icp.getFinalTransformation().cast<double>();
-        transformation_matrix =  transformation_matrix * initTransform;
-        return transformation_matrix;
+    cout<<"warning! icp not coverged!"<< endl;
+      return transformation_matrix;
     }
-    else
-      	// when ICP is not converging, using initTransform as estimation
-        cout << "WARNING: ICP did not converge" << endl;
-    return initTransform;
 }
-
 // implementation of NDT transform
 Eigen::Matrix4d NDT(pcl::NormalDistributionsTransform<pcl::PointXYZ,pcl::PointXYZ> ndt, PointCloudT::Ptr source, Pose startingPose, int iterations){
 	Eigen::Matrix4d transformation_matrix = Eigen::Matrix4d::Identity();
@@ -174,7 +169,7 @@ transformation_matrix = ndt.getFinalTransformation().cast<double>();
 }
 
 int main(){
-  	bool icp_flag = false;
+  	bool icp_flag = true;
 
 	auto client = cc::Client("localhost", 2000);
 	client.SetTimeout(2s);
@@ -299,7 +294,7 @@ int main(){
           Eigen::Matrix4d transform = transform3D(pose.rotation.yaw,pose.rotation.pitch,pose.rotation.roll,pose.position.x,pose.position.y,pose.position.z);
           
           if(icp_flag = true){
-          int iter = 10;
+          int iter = 30;
             transform = ICP(mapCloud,cloudFiltered,pose,iter);
           }
           else
